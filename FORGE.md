@@ -1,5 +1,20 @@
 # SPT-Forge page content
 
+Upload details:
+
+| Field | Value |
+| --- | --- |
+| Name | maschine-RaidReviewOverlay |
+| Version | 1.0.0 |
+| SPT version | 4.1.x |
+| Category | Tools |
+| License | MIT |
+| Source | https://github.com/maschine34675/RaidReviewOverlay |
+| Thumbnail | `assets/thumbnail.png` (512 px; `assets/thumbnail-144.png` if a small one is wanted) |
+| Archive | `artifacts/maschine-RaidReviewOverlay-v1.0.0.zip` |
+| Dependencies | Raid Review (required); Anvil-WebOverlay 1.7.0+ (optional) |
+
+
 Teaser (max 100 characters):
 
 ```text
