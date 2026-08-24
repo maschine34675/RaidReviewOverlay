@@ -11,6 +11,7 @@ Upload details:
 | License | MIT |
 | Source | https://github.com/maschine34675/RaidReviewOverlay |
 | Thumbnail | `assets/thumbnail.png` (512 px; `assets/thumbnail-144.png` if a small one is wanted) |
+| Screenshot | `assets/preview.png` (the menu bar button in game) |
 | Archive | `artifacts/maschine-RaidReviewOverlay-v1.0.0.zip` |
 | Dependencies | Raid Review (required); Anvil-WebOverlay 1.7.0+ (optional) |
 

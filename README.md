@@ -9,6 +9,8 @@ server, the web client). All this does is put its page in an
 [Anvil-WebOverlay](https://github.com/maschine34675/WebOverlay) window and redirect
 the two places Raid Review opens it from.
 
+![The RAID REVIEW button in the bottom menu bar](assets/preview.png)
+
 ## Requirements
 
 - **Raid Review** (`ekky.raidreview`) — the addon stays inactive without it and says so
