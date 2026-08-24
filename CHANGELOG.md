@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+
+- With the window open you can look around again. The window covers the middle
+  of the picture, and that is the exact point the game reads mouse movement
+  from while you turn - so the movement went to the replay and the player stood
+  still, with nothing anywhere to say why. The mouse now reaches the game
+  whenever the game is the window in front; press F5 to bring the replay back.
+  Needs Anvil-WebOverlay 1.8.8 or newer; with an older one the window behaves
+  as before rather than disappearing.
+
 ## 1.0.0
 
 First release.

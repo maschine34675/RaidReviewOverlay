@@ -30,6 +30,15 @@ namespace RaidReviewOverlay.UI
         /// </summary>
         public static readonly Version MinimumVersion = new Version(1, 7, 0);
 
+        /// <summary>
+        /// <c>ClickThroughWhenUnfocused</c> arrived in 1.8.7 and only behaves
+        /// from 1.8.8, the first release that has it. It is set from a body of
+        /// its own so an older library loses that one fix instead of the
+        /// window - the fallback here is the external browser, which is too
+        /// steep a price for a version check.
+        /// </summary>
+        private static readonly Version ClickThroughSince = new Version(1, 8, 8);
+
         private static bool? loaded;
         private static Version foundVersion;
         private static object overlay;
@@ -85,6 +94,28 @@ namespace RaidReviewOverlay.UI
         /// Window frame, close keys and cursor behaviour are applied when the
         /// overlay is first created and stick for the session.
         /// </summary>
+        /// <summary>
+        /// Lets the mouse reach the game while the game is in front. The window
+        /// takes no size of its own, so it gets 80% of the picture, centred -
+        /// which is exactly the point the game locks the cursor to while the
+        /// player looks around. Without this the movement lands on the replay
+        /// instead and the player cannot turn, with nothing to say why.
+        ///
+        /// The cost is that the window cannot be clicked back to the front
+        /// while this is engaged; the toggle key still opens and closes it,
+        /// which is how it was opened in the first place.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void letTheMouseThrough(object options)
+        {
+            // object, NOT OverlayOptions: a parameter type is part of the
+            // SIGNATURE and is resolved when something reflects over this
+            // type's methods, not when the method is called - so a library
+            // type there would defeat the point of the separate body. The cast
+            // lives in the body, which is resolved lazily.
+            ((WebOverlay.OverlayOptions)options).ClickThroughWhenUnfocused = true;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static bool Toggle(string url, string title, bool showFrame, KeyboardShortcut toggleKey,
             Action<string> logWarning, Action<string, bool> onFailed, out bool starting)
@@ -96,7 +127,7 @@ namespace RaidReviewOverlay.UI
             var handle = overlay as WebOverlay.IWebOverlay;
             if (handle == null)
             {
-                handle = WebOverlay.WebOverlays.Create(title, new WebOverlay.OverlayOptions
+                var options = new WebOverlay.OverlayOptions
                 {
                     Frame = showFrame,
                     // Escape plus the key that opened it, so the same press
@@ -114,7 +145,10 @@ namespace RaidReviewOverlay.UI
                     // when the player rebinds it - a fixed key keeps the
                     // remembered window position across that change.
                     PersistenceKey = "RaidReviewOverlay/window",
-                });
+                };
+                if (foundVersion >= ClickThroughSince)
+                    letTheMouseThrough(options);
+                handle = WebOverlay.WebOverlays.Create(title, options);
                 if (handle == null)
                 {
                     logWarning("overlays are unavailable (is the WebView2 runtime installed?); using the browser.");
