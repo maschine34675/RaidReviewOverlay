@@ -1,0 +1,112 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net472, not netstandard: this plugin references Assembly-CSharp for
+         the menu bar button, and the game's assemblies are .NET Framework. -->
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>RaidReviewOverlay</RootNamespace>
+    <AssemblyName>maschine-RaidReviewOverlay</AssemblyName>
+    <Company>https://github.com/maschine34675/RaidReviewOverlay</Company>
+    <Authors>maschine</Authors>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>$(AssemblyVersion)</FileVersion>
+    <Version>$(AssemblyVersion)</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Configurations>Debug;Release</Configurations>
+    <DeployToSpt Condition="'$(DeployToSpt)' == ''">true</DeployToSpt>
+    <!-- <Install>\Development\RaidReviewOverlay\ -> <Install>. Override with /p:SptRoot=... -->
+    <SptRoot Condition="'$(SptRoot)' == ''">$(MSBuildThisFileDirectory)..\..\</SptRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference assemblies so the project builds with the dotnet SDK alone,
+         without a Visual Studio targeting pack. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-reflection">
+      <HintPath>..\..\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Comfort">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+    </Reference>
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\Sirenix.Serialization.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>..\..\EscapeFromTarkov_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <!-- Soft dependency, compile-time only: every use is isolated in
+         UI\WebOverlayGate.cs and gated on the library being installed and new
+         enough. Never ship this DLL in the release zip. -->
+    <Reference Include="Anvil-WebOverlay">
+      <HintPath>..\..\BepInEx\plugins\Anvil-WebOverlay\Anvil-WebOverlay.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The menu bar glyph, drawn by tools\build-icon.py and loaded at runtime
+         in Patches\TaskBarButtonPatch.cs. -->
+    <EmbeddedResource Include="assets\task-bar-icon.png">
+      <LogicalName>RaidReviewOverlay.task-bar-icon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target Name="DeployToSpt" AfterTargets="Build" Condition="'$(DeployToSpt)' == 'true'">
+    <!-- A SptRoot that lost its backslash on the way in (bash turns
+         -p:SptRoot=D:\SPT41 into D:SPT41) stays drive-relative and resolves
+         INSIDE this repository, quietly spraying build output into the source
+         tree. Refuse anything that is not a real game root. -->
+    <Error Condition="!Exists('$(SptRoot)\EscapeFromTarkov.exe')"
+           Text="SptRoot '$(SptRoot)' is not an SPT installation (no EscapeFromTarkov.exe). Pass an absolute path or omit SptRoot to use the default." />
+    <MakeDir Directories="$(SptRoot)\BepInEx\plugins" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SptRoot)\BepInEx\plugins" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(SptRoot)\BepInEx\plugins" SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    <!-- The plugin used to deploy into its own folder. A leftover copy there
+         would load a second time under the same GUID, so clear it out. -->
+    <RemoveDir Directories="$(SptRoot)\BepInEx\plugins\$(AssemblyName)"
+               Condition="Exists('$(SptRoot)\BepInEx\plugins\$(AssemblyName)')" />
+  </Target>
+
+</Project>

@@ -1,0 +1,7 @@
+bin/
+obj/
+*.zip
+*.user
+.vs/
+artifacts/
+__pycache__/
