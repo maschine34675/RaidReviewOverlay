@@ -62,11 +62,9 @@ $pluginDirectory = Join-Path $stageRoot "BepInEx\plugins"
 New-Item -ItemType Directory -Path $pluginDirectory -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $repositoryRoot "bin\$Configuration\$assemblyName.dll") -Destination $pluginDirectory
 
-# Documents stay in the archive root, outside the BepInEx tree the player copies
-# over the game - the game folder is no place for a changelog.
-foreach ($document in @("README.md", "LICENSE", "CHANGELOG.md")) {
-    Copy-Item -LiteralPath (Join-Path $repositoryRoot $document) -Destination $stageRoot
-}
+# No documents in the archive: the whole thing is meant to be extracted over the
+# game folder in one go, so anything outside BepInEx lands loose in the SPT root.
+# README, LICENSE and CHANGELOG live in the repository and on the release page.
 
 # Never ship the soft dependency: the player installs Anvil-WebOverlay itself,
 # and a stale copy next to the real one is a version conflict waiting to load.
@@ -75,6 +73,18 @@ if ($stray) {
     throw "The staging directory contains Anvil-WebOverlay files: $($stray.Name -join ', ')"
 }
 
-Compress-Archive -Path (Get-ChildItem -LiteralPath $stageRoot | ForEach-Object { $_.FullName }) -DestinationPath $archivePath
+# The archive root holds directories only, and only ones the game has. A loose
+# file here would be extracted straight into the SPT installation root.
+$looseFiles = Get-ChildItem -LiteralPath $stageRoot -File
+if ($looseFiles) {
+    throw "Files in the archive root would extract into the game folder: $($looseFiles.Name -join ', ')"
+}
+$rootEntries = Get-ChildItem -LiteralPath $stageRoot | ForEach-Object { $_.Name }
+$unexpected = $rootEntries | Where-Object { $_ -ne "BepInEx" }
+if ($unexpected) {
+    throw "Unexpected entries in the archive root: $($unexpected -join ', ')"
+}
+
+Compress-Archive -Path (Join-Path $stageRoot "BepInEx") -DestinationPath $archivePath
 
 Write-Host "Release package: $archivePath" -ForegroundColor Green
