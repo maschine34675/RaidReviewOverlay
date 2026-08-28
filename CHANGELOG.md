@@ -11,6 +11,17 @@
   whenever the game is the window in front; press F5 to bring the replay back.
   Needs Anvil-WebOverlay 1.8.8 or newer; with an older one the window behaves
   as before rather than disappearing.
+- With the SPT server on another machine, the overlay opened `127.0.0.1` and
+  found nothing there. Raid Review's web server is part of its *server* mod and
+  runs on the server's host, but the address it hands out defaults to loopback -
+  which on a remote setup is the player's own PC. A loopback address is now
+  replaced by the host this client actually talks to, keeping scheme and port.
+  An address deliberately pointed somewhere else is never rewritten.
+- If Raid Review does not expose its address field at all, the address is
+  assembled from the config entries it builds that field from, rather than
+  guessing at localhost; the last-resort default follows the server's host too.
+  Reflection into Raid Review also uses `FlattenHierarchy` now, so a static
+  member it inherited from a base class is still found.
 
 ## 1.0.0
 

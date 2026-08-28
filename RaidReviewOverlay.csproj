@@ -40,6 +40,11 @@
     <Reference Include="spt-reflection">
       <HintPath>..\..\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
     </Reference>
+    <!-- RequestHandler.Host: the address this client actually reaches its
+         server under, which is where Raid Review's web server runs too. -->
+    <Reference Include="spt-common">
+      <HintPath>..\..\BepInEx\plugins\spt\spt-common.dll</HintPath>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>..\..\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
     </Reference>

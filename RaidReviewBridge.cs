@@ -1,6 +1,7 @@
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using System;
+using System.Net;
 using System.Reflection;
 using UnityEngine;
 
@@ -25,13 +26,21 @@ namespace RaidReviewOverlay
         /// <summary>
         /// Raid Review's own default: its server mod serves the web client on
         /// 7829 (7828 is the WebSocket port the client sends telemetry to).
-        /// Only used when the plugin is present but its address field is not.
+        /// Only used when the plugin is present but its address is not.
         /// </summary>
-        public const string FallbackUrl = "http://127.0.0.1:7829";
+        public const string DefaultWebClientPort = "7829";
 
         private const string UrlFieldName = "RAID_REVIEW_HTTP_Server";
         private const string HotkeyFieldName = "LaunchWebpageKey";
         private const string MenuItemFieldName = "InsertMenuItem";
+
+        /// <summary>
+        /// FlattenHierarchy matters: without it, reflection does not see a
+        /// static member a plugin class inherited from a base class, and every
+        /// lookup here would quietly fail on a build that refactored one out.
+        /// </summary>
+        private const BindingFlags StaticFieldFlags =
+            BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy;
 
         private static Type pluginType;
         private static bool pluginTypeResolved;
@@ -74,37 +83,145 @@ namespace RaidReviewOverlay
             if (type == null)
                 return null;
 
-            string url;
-            try
+            string url = readAddressField(type, logWarning);
+
+            // Raid Review builds that field in its own Awake. If it is missing
+            // or empty - an older build, a variant that renamed it - the same
+            // address can be assembled from the config entries it builds it
+            // from, which is a far better answer than a guess at localhost.
+            if (string.IsNullOrEmpty(url))
             {
-                FieldInfo field = type.GetField(UrlFieldName, BindingFlags.Public | BindingFlags.Static);
-                url = field == null ? null : field.GetValue(null) as string;
-            }
-            catch (Exception ex)
-            {
-                warnOnce(logWarning, "could not read Raid Review's server address (" + ex.Message
-                    + "); falling back to " + FallbackUrl + ".");
-                return FallbackUrl;
+                url = buildAddressFromConfig(type);
+                if (!string.IsNullOrEmpty(url))
+                    warnOnce(logWarning, "Raid Review did not expose its server address (no field '"
+                        + UrlFieldName + "'); assembled " + url + " from its config instead.");
             }
 
             if (string.IsNullOrEmpty(url))
             {
-                warnOnce(logWarning, "Raid Review did not expose a server address (no field '" + UrlFieldName
-                    + "'); falling back to " + FallbackUrl + ". A custom server IP or port set in Raid Review's"
-                    + " own config will not be picked up.");
-                return FallbackUrl;
+                url = defaultAddress();
+                warnOnce(logWarning, "Raid Review exposed neither a server address nor the config to build"
+                    + " one; falling back to " + url + ".");
             }
 
             Uri parsed;
             if (!Uri.TryCreate(url, UriKind.Absolute, out parsed)
                 || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
             {
+                string fallback = defaultAddress();
                 warnOnce(logWarning, "Raid Review's server address '" + url
-                    + "' is not an http(s) URL; falling back to " + FallbackUrl + ".");
-                return FallbackUrl;
+                    + "' is not an http(s) URL; falling back to " + fallback + ".");
+                return fallback;
             }
 
-            return url;
+            return correctLoopback(parsed, logWarning);
+        }
+
+        /// <summary>
+        /// Replaces a loopback host with the server this client actually talks
+        /// to. Raid Review's web server is part of its SERVER mod, so it runs
+        /// wherever the SPT server runs. When those are different machines, an
+        /// address of 127.0.0.1 points at the player's own PC, where nothing
+        /// is listening - which is what a remote-server player sees as "the
+        /// overlay always opens localhost". Raid Review's own hotkey has the
+        /// same problem, since both read the same address.
+        ///
+        /// This only ever rewrites loopback to a remote host, never the other
+        /// way round: an address the player deliberately pointed somewhere
+        /// else is left exactly as configured.
+        /// </summary>
+        private static string correctLoopback(Uri address, Action<string> logWarning)
+        {
+            if (!isLoopback(address.Host))
+                return address.ToString();
+
+            string backend = backendHost();
+            if (string.IsNullOrEmpty(backend) || isLoopback(backend))
+                return address.ToString();
+
+            var builder = new UriBuilder(address);
+            builder.Host = backend;
+            // UriBuilder writes the default port explicitly; keep the address
+            // as short as it came in.
+            if (address.IsDefaultPort)
+                builder.Port = -1;
+
+            string corrected = builder.Uri.ToString();
+            warnOnce(logWarning, "Raid Review points at " + address.Host + ", but this client talks to "
+                + backend + " - its web server runs on the server machine, so the overlay opens "
+                + corrected + ". Set 'Server IP' in Raid Review's own config to silence this.");
+            return corrected;
+        }
+
+        private static bool isLoopback(string host)
+        {
+            if (string.IsNullOrEmpty(host))
+                return false;
+            if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+                return true;
+            IPAddress parsed;
+            return IPAddress.TryParse(host, out parsed) && IPAddress.IsLoopback(parsed);
+        }
+
+        /// <summary>The host this client reaches its SPT server under.</summary>
+        private static string backendHost()
+        {
+            try
+            {
+                Uri backend;
+                if (Uri.TryCreate(SPT.Common.Http.RequestHandler.Host, UriKind.Absolute, out backend)
+                    && !string.IsNullOrWhiteSpace(backend.Host))
+                    return backend.Host;
+            }
+            catch
+            {
+                // Before the client has a backend there is nothing to learn
+                // from it; the configured address stands.
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Raid Review's default web client port, on whichever machine the
+        /// server runs - not blindly on this one.
+        /// </summary>
+        private static string defaultAddress()
+        {
+            string host = backendHost();
+            return "http://" + (string.IsNullOrEmpty(host) ? IPAddress.Loopback.ToString() : host)
+                + ":" + DefaultWebClientPort;
+        }
+
+        private static string readAddressField(Type type, Action<string> logWarning)
+        {
+            try
+            {
+                FieldInfo field = type.GetField(UrlFieldName, StaticFieldFlags);
+                return field == null ? null : field.GetValue(null) as string;
+            }
+            catch (Exception ex)
+            {
+                warnOnce(logWarning, "could not read Raid Review's server address (" + ex.Message + ").");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The address as Raid Review itself assembles it, from the three
+        /// config entries it uses: scheme from TLS, host, and port when set.
+        /// </summary>
+        private static string buildAddressFromConfig(Type type)
+        {
+            ConfigEntry<string> address = staticConfigEntry<string>(type, "ServerAddress");
+            if (address == null || string.IsNullOrEmpty(address.Value))
+                return null;
+
+            ConfigEntry<string> port = staticConfigEntry<string>(type, "ServerHttpPort");
+            ConfigEntry<bool> tls = staticConfigEntry<bool>(type, "ServerTLS");
+
+            string scheme = tls != null && tls.Value ? "https://" : "http://";
+            string portPart = port != null && !string.IsNullOrEmpty(port.Value) ? ":" + port.Value : string.Empty;
+            return scheme + address.Value + portPart;
         }
 
         /// <summary>
@@ -134,17 +251,7 @@ namespace RaidReviewOverlay
             if (type == null)
                 return false;
 
-            ConfigEntry<KeyboardShortcut> entry;
-            try
-            {
-                FieldInfo field = type.GetField(HotkeyFieldName, BindingFlags.Public | BindingFlags.Static);
-                entry = field == null ? null : field.GetValue(null) as ConfigEntry<KeyboardShortcut>;
-            }
-            catch
-            {
-                return false;
-            }
-
+            ConfigEntry<KeyboardShortcut> entry = staticConfigEntry<KeyboardShortcut>(type, HotkeyFieldName);
             if (entry == null)
                 return false;
 
@@ -195,17 +302,7 @@ namespace RaidReviewOverlay
             if (type == null)
                 return false;
 
-            ConfigEntry<bool> entry;
-            try
-            {
-                FieldInfo field = type.GetField(MenuItemFieldName, BindingFlags.Public | BindingFlags.Static);
-                entry = field == null ? null : field.GetValue(null) as ConfigEntry<bool>;
-            }
-            catch
-            {
-                return false;
-            }
-
+            ConfigEntry<bool> entry = staticConfigEntry<bool>(type, MenuItemFieldName);
             if (entry == null)
                 return false;
 
@@ -228,6 +325,25 @@ namespace RaidReviewOverlay
             bool original = menuItemOriginal;
             menuItemEntry = null;
             setWithoutSaving(entry, original);
+        }
+
+        /// <summary>
+        /// One of Raid Review's public static config entries, or null when
+        /// this build does not have it. Every lookup here goes through this,
+        /// so a missing member is a null to handle rather than an exception
+        /// out of a hotkey press.
+        /// </summary>
+        private static ConfigEntry<T> staticConfigEntry<T>(Type type, string fieldName)
+        {
+            try
+            {
+                FieldInfo field = type.GetField(fieldName, StaticFieldFlags);
+                return field == null ? null : field.GetValue(null) as ConfigEntry<T>;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

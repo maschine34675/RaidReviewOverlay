@@ -39,7 +39,7 @@ namespace RaidReviewOverlay
     {
         public const string PluginGuid = "com.maschine.RaidReviewOverlay";
         public const string PluginName = "maschine-RaidReviewOverlay";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.0.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;

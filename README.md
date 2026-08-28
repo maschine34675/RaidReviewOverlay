@@ -63,9 +63,17 @@ uninstalling this addon leaves Raid Review exactly as it was. Turning either set
 in the configuration manager restores the corresponding value immediately.
 
 The address comes from Raid Review itself (`RAID_REVIEW_HTTP_Server`), read fresh on
-every press, so a custom server IP, port or TLS setting in its config is honoured — a
-server on another machine included. If that field cannot be read, the addon falls back
-to Raid Review's default `http://127.0.0.1:7829` and says so once.
+every press, so a custom server IP, port or TLS setting in its config is honoured. If
+that field is missing, the same address is assembled from the config entries Raid Review
+builds it from, and only then does a default apply.
+
+**A server on another machine works without configuring anything.** Raid Review's web
+server is part of its *server* mod, so it runs wherever the SPT server runs — but its
+address defaults to `127.0.0.1`, which on a remote setup points at the player's own PC,
+where nothing is listening. When the configured address is loopback and this client
+talks to a remote SPT server, the overlay substitutes that server's host, keeps scheme
+and port, and says so once in the log. It never rewrites in the other direction: an
+address deliberately pointed somewhere else is used exactly as configured.
 
 Everything about Raid Review is reached through reflection: this plugin is not built
 against `RAID_REVIEW.dll`, so a missing, renamed or newer Raid Review costs a log line,
