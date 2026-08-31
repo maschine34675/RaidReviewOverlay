@@ -142,7 +142,7 @@ namespace RaidReviewOverlay
 
             try
             {
-                new Patches.TaskBarButtonPatch().Enable();
+                new Patches.RaidReviewOverlayTaskBarButtonPatch().Enable();
             }
             catch (Exception ex)
             {

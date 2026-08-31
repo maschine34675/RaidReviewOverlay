@@ -92,7 +92,7 @@
 
   <ItemGroup>
     <!-- The menu bar glyph, drawn by tools\build-icon.py and loaded at runtime
-         in Patches\TaskBarButtonPatch.cs. -->
+         in Patches\RaidReviewOverlayTaskBarButtonPatch.cs. -->
     <EmbeddedResource Include="assets\task-bar-icon.png">
       <LogicalName>RaidReviewOverlay.task-bar-icon.png</LogicalName>
     </EmbeddedResource>

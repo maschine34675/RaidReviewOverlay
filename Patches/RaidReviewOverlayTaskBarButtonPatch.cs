@@ -26,8 +26,15 @@ namespace RaidReviewOverlay.Patches
     /// opens the external browser. The plugin turns that setting off for the
     /// session before the menu is ever built; the leftover-group check below
     /// only covers the case where it was switched back on mid-session.
+    ///
+    /// The class name carries the mod prefix on purpose. The parameterless
+    /// ModulePatch ctor builds the Harmony id from GetType().Name alone,
+    /// without the namespace, so two mods patching MenuTaskBar.Awake from a
+    /// class both called TaskBarButtonPatch register under one shared id and
+    /// an UnpatchSelf in either would strip the other's patches. Do not
+    /// shorten this name.
     /// </summary>
-    internal class TaskBarButtonPatch : ModulePatch
+    internal class RaidReviewOverlayTaskBarButtonPatch : ModulePatch
     {
         private const string ButtonName = "RaidReviewOverlayTaskBarButton";
         private const string RaidReviewGroupName = "RaidReview";
@@ -100,7 +107,7 @@ namespace RaidReviewOverlay.Patches
 
             try
             {
-                using (Stream stream = typeof(TaskBarButtonPatch).Assembly.GetManifestResourceStream(IconResource))
+                using (Stream stream = typeof(RaidReviewOverlayTaskBarButtonPatch).Assembly.GetManifestResourceStream(IconResource))
                 {
                     if (stream == null)
                     {
