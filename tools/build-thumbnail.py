@@ -1,4 +1,4 @@
-"""Renders the Forge thumbnail.
+"""Renders the previous Forge thumbnail into dated archive files.
 
 The Forge shows thumbnails small, next to a mod name that already says what
 the mod is called - so these carry a picture, not a caption. Whatever survives
@@ -9,8 +9,8 @@ VARIANTS holds the drafts that were considered; CHOSEN is the one that shipped.
 Run with --all to render the contact sheet and compare them again.
 
 Run:  python tools/build-thumbnail.py [--all]
-Out:  assets/thumbnail.png (512) and assets/thumbnail-144.png
-      with --all: assets/thumbnail-variants.png
+Out:  assets/thumbnail-old-2026-09-10.png (512) and assets/thumbnail-144-old-2026-09-10.png
+      with --all: assets/thumbnail-variants-old-2026-09-10.png
 """
 
 import math
@@ -194,15 +194,15 @@ def main():
             sheet.paste(master.resize((72, 72), Image.LANCZOS), (x + (THUMB - 72) // 2, 200))
             draw.text((x, 14), name, fill=(150, 150, 150))
         draw.text((20, 300), "oben 144 px (Forge-Kachel), unten 72 px", fill=(110, 110, 110))
-        target = os.path.join(assets, "thumbnail-variants.png")
+        target = os.path.join(assets, "thumbnail-variants-old-2026-09-10.png")
         sheet.save(target)
         print("wrote", os.path.normpath(target))
         return
 
     master = render(CHOSEN)
-    master.save(os.path.join(assets, "thumbnail.png"))
-    master.resize((THUMB, THUMB), Image.LANCZOS).save(os.path.join(assets, "thumbnail-144.png"))
-    print("wrote thumbnail.png (%d px) and thumbnail-144.png from variant '%s'" % (MASTER, CHOSEN))
+    master.save(os.path.join(assets, "thumbnail-old-2026-09-10.png"))
+    master.resize((THUMB, THUMB), Image.LANCZOS).save(os.path.join(assets, "thumbnail-144-old-2026-09-10.png"))
+    print("wrote thumbnail-old-2026-09-10.png (%d px) and thumbnail-144-old-2026-09-10.png from variant '%s'" % (MASTER, CHOSEN))
 
 
 if __name__ == "__main__":
