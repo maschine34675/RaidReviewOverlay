@@ -10,6 +10,11 @@
     violation there breaks OTHER mods and would not show up in any playtest of
     this one.
 #>
+# Windows PowerShell 5.1 ships Microsoft.PowerShell.Archive 1.0.1.0, whose Compress-Archive
+# writes ZIP entry names with backslashes; unzip on Linux and macOS then extracts file names
+# instead of folders. PowerShell 7 writes the forward slashes the ZIP format requires.
+#Requires -Version 7
+
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"
