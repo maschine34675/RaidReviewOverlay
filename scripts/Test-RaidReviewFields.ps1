@@ -3,13 +3,16 @@
     Checks a RAID_REVIEW.dll for the static members this addon reflects on.
 
 .DESCRIPTION
-    The addon reads three public static members from Raid Review's plugin
+    The addon reads six public static members from Raid Review's plugin
     class and works around each of them being absent - but "works around"
     means the browser tab comes back, quietly, for anyone who does not read
     the log. Run this against a new Raid Review release to find out before the
     players do.
 
-    Verified against Raid Review 1.5.0 (Chazut/SPT-RaidReview, branch 4.1.X).
+    All six are declared, with these types, in the Raid Review 1.5.0 and 1.7.0
+    sources (Chazut/SPT-RaidReview, branch 4.1.X); the 1.5.0 DLL was checked
+    with this script for the three it covered then. Source is not the shipped
+    build - run this against the installed DLL before trusting a new release.
 #>
 param(
     [string]$Path
@@ -67,7 +70,10 @@ Write-Host "Plugin class: $($pluginType.FullName)  ($Path)"
 # is PowerShell's escape character inside double quotes and would silently
 # vanish, turning every comparison below into a false alarm.
 $expected = @(
-    @{ Name = "RAID_REVIEW_HTTP_Server"; Type = 'System.String';                                                               Used = "the web interface address" },
+    @{ Name = "ServerAddress";           Type = 'BepInEx.Configuration.ConfigEntry`1<System.String>';                          Used = "the live server address (first choice)" },
+    @{ Name = "ServerHttpPort";          Type = 'BepInEx.Configuration.ConfigEntry`1<System.String>';                          Used = "the live server port, and the port added to a typed bare host" },
+    @{ Name = "ServerTLS";               Type = 'BepInEx.Configuration.ConfigEntry`1<System.Boolean>';                         Used = "http or https, live and for a typed bare host" },
+    @{ Name = "RAID_REVIEW_HTTP_Server"; Type = 'System.String';                                                               Used = "the address computed at game start (fallback)" },
     @{ Name = "LaunchWebpageKey";        Type = 'BepInEx.Configuration.ConfigEntry`1<BepInEx.Configuration.KeyboardShortcut>'; Used = "the hotkey takeover" },
     @{ Name = "InsertMenuItem";          Type = 'BepInEx.Configuration.ConfigEntry`1<System.Boolean>';                         Used = "suppressing Raid Review's own menu button" }
 )
@@ -77,7 +83,7 @@ $problems = New-Object System.Collections.Generic.List[string]
 foreach ($member in $expected) {
     $field = $pluginType.Fields | Where-Object { $_.Name -eq $member.Name } | Select-Object -First 1
     if (-not $field) {
-        $problems.Add("missing: $($member.Name) - $($member.Used) falls back")
+        $problems.Add("missing: $($member.Name) (used for $($member.Used)) - check in RaidReviewBridge.cs what the addon does without it")
         continue
     }
     if (-not $field.IsStatic -or -not $field.IsPublic) {
@@ -97,4 +103,4 @@ if ($problems.Count -gt 0) {
     throw "This Raid Review build does not match what the addon reflects on."
 }
 
-Write-Host "All three members are as expected." -ForegroundColor Green
+Write-Host "All $($expected.Count) members are as expected." -ForegroundColor Green

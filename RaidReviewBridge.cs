@@ -1,6 +1,7 @@
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Reflection;
 using UnityEngine;
@@ -26,7 +27,9 @@ namespace RaidReviewOverlay
         /// <summary>
         /// Raid Review's own default: its server mod serves the web client on
         /// 7829 (7828 is the WebSocket port the client sends telemetry to).
-        /// Only used when the plugin is present but its address is not.
+        /// Used when neither Raid Review's settings nor its address can be
+        /// read, and as the port added to a typed bare host when Raid Review's
+        /// client plugin - or its port setting - is not available.
         /// </summary>
         public const string DefaultWebClientPort = "7829";
 
@@ -44,7 +47,7 @@ namespace RaidReviewOverlay
 
         private static Type pluginType;
         private static bool pluginTypeResolved;
-        private static bool urlWarned;
+        private static readonly HashSet<string> warned = new HashSet<string>(StringComparer.Ordinal);
 
         private static ConfigEntry<KeyboardShortcut> takenOverEntry;
         private static KeyboardShortcut takenOverOriginal;
@@ -71,37 +74,78 @@ namespace RaidReviewOverlay
         }
 
         /// <summary>
-        /// The address of Raid Review's web interface, read fresh on every
-        /// call: the plugin builds it from its own config (server IP, HTTP
-        /// port, TLS), and the player can change that at runtime through the
-        /// configuration manager. Null when Raid Review is not there at all -
-        /// the caller then says so instead of opening a page nothing serves.
+        /// The address of Raid Review's web interface, resolved fresh on every
+        /// call, and in <paramref name="source"/> a few words on where it came
+        /// from - the line a player pastes when it is wrong.
+        ///
+        /// In order:
+        /// 1. the address the player typed into this addon's own setting -
+        ///    always wins, and is used as written. It is the one answer for
+        ///    setups nothing can detect: Raid Review's client plugin installed
+        ///    only on a Fika headless host, a server reached through a tunnel,
+        ///    a public IP the player's own router cannot loop back to;
+        /// 2. Raid Review's live settings (its F12 Server IP, port and TLS), with
+        ///    a loopback host replaced by the SPT server's when that is remote;
+        /// 3. the address Raid Review computed at game start, then its default
+        ///    port on the SPT server's host.
+        ///
+        /// Null when there is neither a typed address nor Raid Review - the
+        /// caller then says so instead of opening a page nothing serves.
         /// </summary>
-        public static string GetWebInterfaceUrl(Action<string> logWarning)
+        public static string GetWebInterfaceUrl(string manualAddress, Action<string> logWarning, out string source)
         {
+            source = null;
+
+            if (!string.IsNullOrWhiteSpace(manualAddress))
+            {
+                string scheme, port;
+                DefaultSchemeAndPort(out scheme, out port);
+                string reason;
+                string manual = AddressRules.NormalizeManual(manualAddress, scheme, port, out reason);
+                if (manual != null)
+                {
+                    source = "set in this addon's 'Web Interface Address'";
+                    return manual;
+                }
+
+                warnOnce(logWarning, "'Web Interface Address' is set to '" + AddressRules.ForLog(manualAddress.Trim())
+                    + "', which cannot be used: " + reason + ". "
+                    + (IsInstalled
+                        ? "Using the address Raid Review provides instead."
+                        : "Raid Review is not installed here either, so there is nothing to open."));
+            }
+
             Type type = resolvePluginType();
             if (type == null)
                 return null;
 
-            string url = readAddressField(type, logWarning);
+            // Raid Review's live settings first. It computes its own address
+            // field ONCE, in Awake, and never again - so after the player
+            // corrects its Server IP in F12, that field still holds the old
+            // address until the game restarts, and Raid Review's own hotkey
+            // keeps opening it. The config entries it builds the field from
+            // are live; reading them makes a correction count on the next
+            // press. The field stays as the fallback for a build that renamed
+            // the entries.
+            string url = buildAddressFromConfig(type);
+            string origin = "from Raid Review's Server IP setting";
 
-            // Raid Review builds that field in its own Awake. If it is missing
-            // or empty - an older build, a variant that renamed it - the same
-            // address can be assembled from the config entries it builds it
-            // from, which is a far better answer than a guess at localhost.
             if (string.IsNullOrEmpty(url))
             {
-                url = buildAddressFromConfig(type);
+                url = readAddressField(type, logWarning);
+                origin = "from the address Raid Review computed at game start";
                 if (!string.IsNullOrEmpty(url))
-                    warnOnce(logWarning, "Raid Review did not expose its server address (no field '"
-                        + UrlFieldName + "'); assembled " + url + " from its config instead.");
+                    warnOnce(logWarning, "Raid Review's Server IP setting could not be read; using the address"
+                        + " it computed at game start, " + AddressRules.ForLog(url)
+                        + ". A Server IP changed in its F12 since then needs a restart.");
             }
 
             if (string.IsNullOrEmpty(url))
             {
                 url = defaultAddress();
-                warnOnce(logWarning, "Raid Review exposed neither a server address nor the config to build"
-                    + " one; falling back to " + url + ".");
+                origin = "Raid Review's default port on the SPT server";
+                warnOnce(logWarning, "Raid Review exposed neither its settings nor an address; falling back to "
+                    + url + ".");
             }
 
             Uri parsed;
@@ -109,58 +153,62 @@ namespace RaidReviewOverlay
                 || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
             {
                 string fallback = defaultAddress();
-                warnOnce(logWarning, "Raid Review's server address '" + url
+                warnOnce(logWarning, "Raid Review's server address '" + AddressRules.ForLog(url)
                     + "' is not an http(s) URL; falling back to " + fallback + ".");
+                source = "Raid Review's default port on the SPT server";
                 return fallback;
             }
 
-            return correctLoopback(parsed, logWarning);
-        }
-
-        /// <summary>
-        /// Replaces a loopback host with the server this client actually talks
-        /// to. Raid Review's web server is part of its SERVER mod, so it runs
-        /// wherever the SPT server runs. When those are different machines, an
-        /// address of 127.0.0.1 points at the player's own PC, where nothing
-        /// is listening - which is what a remote-server player sees as "the
-        /// overlay always opens localhost". Raid Review's own hotkey has the
-        /// same problem, since both read the same address.
-        ///
-        /// This only ever rewrites loopback to a remote host, never the other
-        /// way round: an address the player deliberately pointed somewhere
-        /// else is left exactly as configured.
-        /// </summary>
-        private static string correctLoopback(Uri address, Action<string> logWarning)
-        {
-            if (!isLoopback(address.Host))
-                return address.ToString();
-
+            // Raid Review's web server is part of its SERVER mod, so it runs
+            // wherever the SPT server runs - but its address defaults to
+            // 127.0.0.1, which on a remote setup is the player's own PC.
             string backend = backendHost();
-            if (string.IsNullOrEmpty(backend) || isLoopback(backend))
-                return address.ToString();
-
-            var builder = new UriBuilder(address);
-            builder.Host = backend;
-            // UriBuilder writes the default port explicitly; keep the address
-            // as short as it came in.
-            if (address.IsDefaultPort)
-                builder.Port = -1;
-
-            string corrected = builder.Uri.ToString();
-            warnOnce(logWarning, "Raid Review points at " + address.Host + ", but this client talks to "
-                + backend + " - its web server runs on the server machine, so the overlay opens "
-                + corrected + ". Set 'Server IP' in Raid Review's own config to silence this.");
+            bool replaced;
+            string corrected = AddressRules.CorrectLoopback(parsed, backend, out replaced);
+            if (replaced)
+            {
+                source = origin + ", with the SPT server's host " + backend + " in place of " + parsed.Host;
+                warnOnce(logWarning, "Raid Review points at " + parsed.Host + ", but this client talks to "
+                    + backend + " - its web server runs on the server machine, so the overlay opens "
+                    + AddressRules.ForLog(corrected) + ". Set 'Server IP' in Raid Review's own config to silence this.");
+            }
+            else
+            {
+                source = origin;
+            }
             return corrected;
         }
 
-        private static bool isLoopback(string host)
+        /// <summary>
+        /// Scheme and port for a typed address that names neither: what Raid
+        /// Review itself would use when its client plugin is here - https with
+        /// its TLS switch on, and its port setting, where an empty port means
+        /// none, as behind a reverse proxy - otherwise http on its default
+        /// port. So a bare host typed in matches the address Raid Review would
+        /// open for the same host.
+        /// </summary>
+        public static void DefaultSchemeAndPort(out string scheme, out string port)
         {
-            if (string.IsNullOrEmpty(host))
-                return false;
-            if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-                return true;
-            IPAddress parsed;
-            return IPAddress.TryParse(host, out parsed) && IPAddress.IsLoopback(parsed);
+            scheme = Uri.UriSchemeHttp;
+            port = DefaultWebClientPort;
+
+            Type type = resolvePluginType();
+            if (type == null)
+                return;
+
+            ConfigEntry<bool> tls = staticConfigEntry<bool>(type, "ServerTLS");
+            if (tls != null && tls.Value)
+                scheme = Uri.UriSchemeHttps;
+
+            ConfigEntry<string> configured = staticConfigEntry<string>(type, "ServerHttpPort");
+            if (configured == null)
+                return;
+            string value = configured.Value == null ? string.Empty : configured.Value.Trim();
+            int number;
+            if (value.Length == 0)
+                port = string.Empty;
+            else if (int.TryParse(value, out number) && number > 0 && number < 65536)
+                port = value;
         }
 
         /// <summary>The host this client reaches its SPT server under.</summary>
@@ -213,15 +261,28 @@ namespace RaidReviewOverlay
         private static string buildAddressFromConfig(Type type)
         {
             ConfigEntry<string> address = staticConfigEntry<string>(type, "ServerAddress");
-            if (address == null || string.IsNullOrEmpty(address.Value))
-                return null;
-
             ConfigEntry<string> port = staticConfigEntry<string>(type, "ServerHttpPort");
             ConfigEntry<bool> tls = staticConfigEntry<bool>(type, "ServerTLS");
 
-            string scheme = tls != null && tls.Value ? "https://" : "http://";
-            string portPart = port != null && !string.IsNullOrEmpty(port.Value) ? ":" + port.Value : string.Empty;
-            return scheme + address.Value + portPart;
+            // All three or nothing. A build that renamed only the port or TLS
+            // entry would otherwise yield an address without its port, or http
+            // where Raid Review uses https - wrong, and silently so - while the
+            // address it computed itself is still right. Null hands over to
+            // that one. An empty port VALUE stays legitimate: Raid Review then
+            // writes no port either.
+            if (address == null || port == null || tls == null)
+                return null;
+
+            string host = address.Value == null ? string.Empty : address.Value.Trim();
+            if (host.Length == 0)
+                return null;
+
+            // Trimmed, where Raid Review takes the text raw: a stray space
+            // pasted into its F12 field breaks its own address, not this one.
+            string portValue = port.Value == null ? string.Empty : port.Value.Trim();
+            string scheme = tls.Value ? "https://" : "http://";
+            string portPart = portValue.Length > 0 ? ":" + portValue : string.Empty;
+            return scheme + host + portPart;
         }
 
         /// <summary>
@@ -439,11 +500,16 @@ namespace RaidReviewOverlay
             return null;
         }
 
+        /// <summary>
+        /// Each distinct warning once per session. One shared flag used to
+        /// guard all of them, so whichever fired first silenced every later
+        /// one - including a different problem that showed up afterwards, which
+        /// is exactly the line a support question needs.
+        /// </summary>
         private static void warnOnce(Action<string> logWarning, string message)
         {
-            if (urlWarned)
+            if (!warned.Add(message))
                 return;
-            urlWarned = true;
             if (logWarning != null)
                 logWarning(message);
         }

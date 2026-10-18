@@ -60,6 +60,7 @@ if ($LASTEXITCODE -ne 0) {
 
 & (Join-Path $PSScriptRoot "Test-SoftDependency.ps1") -Configuration $Configuration
 & (Join-Path $PSScriptRoot "Test-ConfigKeys.ps1")
+& (Join-Path $PSScriptRoot "Test-AddressRules.ps1")
 
 # The DLL goes straight into plugins, without a folder of its own: it is a
 # single file with nothing to keep next to it.

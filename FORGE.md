@@ -5,14 +5,14 @@ Upload details:
 | Field | Value |
 | --- | --- |
 | Name | maschine-RaidReviewOverlay |
-| Version | 1.0.0 |
+| Version | 1.0.2 |
 | SPT version | 4.1.x |
 | Category | Tools |
 | License | MIT |
 | Source | https://github.com/maschine34675/RaidReviewOverlay |
 | Thumbnail | `assets/thumbnail.png` (1024 px; `assets/thumbnail-128.png` and `assets/thumbnail-64.png` for smaller sizes; editable source: `assets/thumbnail.svg`) |
 | Screenshot | `assets/preview.png` (the menu bar button in game) |
-| Archive | `artifacts/maschine-RaidReviewOverlay-v1.0.0.zip` |
+| Archive | `artifacts/maschine-RaidReviewOverlay-v1.0.2.zip` |
 | Dependencies | Raid Review (required); Anvil-WebOverlay 1.7.0+ (optional) |
 
 
@@ -45,7 +45,11 @@ Raid Review does all the work — this only moves where its page appears.
   runtime, or exclusive fullscreen — every trigger falls back to the external browser,
   exactly what Raid Review does on its own.
 - **Remote servers work:** the address is read from Raid Review on every press, so a
-  custom server IP, port or TLS setting in its config is honoured.
+  custom server IP, port or TLS setting in its config is honoured - and when that still
+  says `127.0.0.1` on a remote setup, the SPT server's host is used instead.
+- **Fika headless and other special setups:** enter the address that works in your
+  browser under *Web Interface Address* (F12). It wins over everything automatic, and
+  with it set the addon even works on a PC without Raid Review's client plugin.
 
 ## What it changes about Raid Review
 

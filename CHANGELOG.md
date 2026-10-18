@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.2
+
+### Added
+
+- **Web Interface Address** (F12, section Server): the address to open, for the setups
+  nothing on the player's PC can detect. Type the address your browser ends up on -
+  `http://192.168.1.20:7829`, or just `192.168.1.20`; a bare host gets the scheme and
+  port Raid Review itself would use. It wins over everything automatic and applies on
+  the next press.
+- With an address entered, the addon also works on a PC **without Raid Review's client
+  plugin** - common on Fika headless setups, where the headless host that records the
+  raids has it. Before, the addon logged at startup that Raid Review was not installed
+  and then did nothing on F5 or the button, with no hint that anything could be entered.
+  Without a plugin and without an address it still stays inactive, and the log now says
+  what to enter. Entered while the game runs, the address turns on F5 and the menu bar
+  button at once.
+- Every press logs the address it opened and where it came from, once per change - the
+  one line a support question needs. User name and password in it are shown as `***`.
+- Readable names and a deliberate order in the F12 menu. The `.cfg` keys are unchanged,
+  so existing settings carry over.
+
+### Fixed
+
+- A Server IP corrected in Raid Review's own F12 menu was ignored until the game
+  restarted: Raid Review computes its address once at startup, and that is what was
+  read. Its live settings are read now, so the correction counts on the next press.
+- Pressing F5 after changing the address could close the window instead of showing the
+  new page - the press toggled a window that was still open on the old one. A new
+  address now always opens.
+- The first address warning of a session silenced every later one, including unrelated
+  ones that came afterwards. Each distinct warning now appears once.
+
 ## 1.0.1
 
 ### Fixed

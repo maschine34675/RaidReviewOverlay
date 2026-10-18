@@ -18,9 +18,10 @@ namespace RaidReviewOverlay.Patches
     /// as a momentary button (silently untoggled after each press) and opens
     /// the same window as the hotkey.
     ///
-    /// The bar rebuilds with the menu (login, return from raid), and this
-    /// postfix runs on each MenuTaskBar.Awake, so the button reappears with
-    /// its bar and needs no lifetime management of its own.
+    /// The bar is built once per login and only hidden in between (raids, the
+    /// first-person hideout, some screens). This postfix runs on each
+    /// MenuTaskBar.Awake, so a new bar gets the button with it; a setting
+    /// changed while the game runs adds it through AddToCurrentBar.
     ///
     /// Raid Review can add a button of its own ("Insert Menu Item"), which
     /// opens the external browser. The plugin turns that setting off for the
@@ -45,6 +46,15 @@ namespace RaidReviewOverlay.Patches
         private static Sprite iconSprite;
         private static bool iconUnavailable;
 
+        // The bar is built once per login - it lives under PreloaderUI, which
+        // survives scene loads - and is HIDDEN, not destroyed, in raids, in the
+        // first-person hideout and on some screens: MenuTaskBar.SetMenuChatBarVisibility
+        // just deactivates its GameObject. A destroyed bar compares equal to
+        // null through Unity's operator; a hidden one does not, so that needs
+        // checking separately.
+        private static MenuTaskBar currentBar;
+        private static bool installPending;
+
         protected override MethodBase GetTargetMethod()
         {
             return AccessTools.DeclaredMethod(typeof(MenuTaskBar), nameof(MenuTaskBar.Awake));
@@ -53,10 +63,51 @@ namespace RaidReviewOverlay.Patches
         [PatchPostfix]
         private static void Postfix(MenuTaskBar __instance)
         {
+            currentBar = __instance;
+            installPending = false;
+            install(__instance);
+        }
+
+        /// <summary>
+        /// Puts the button on the current bar, for a setting changed at runtime
+        /// - an address typed in F12 that turns the addon on, the button
+        /// switched back on - which would otherwise wait for the next login.
+        /// Only on a bar that is showing: built under a hidden one, the clone's
+        /// Awake and OnEnable are deferred, its animator never takes the "off"
+        /// state, and the caption check below takes the inactive bar for a
+        /// vanished caption and freezes the animator for good. A hidden bar
+        /// gets the button when it shows again, from
+        /// <see cref="InstallIfPending"/>. Safe to call repeatedly: a bar that
+        /// has the button already is left alone.
+        /// </summary>
+        internal static void AddToCurrentBar()
+        {
+            if (currentBar != null && currentBar.gameObject.activeInHierarchy)
+            {
+                installPending = false;
+                install(currentBar);
+            }
+            else
+            {
+                installPending = true;
+            }
+        }
+
+        /// <summary>Called every frame; one bool check unless a button is owed.</summary>
+        internal static void InstallIfPending()
+        {
+            if (!installPending || currentBar == null || !currentBar.gameObject.activeInHierarchy)
+                return;
+            installPending = false;
+            install(currentBar);
+        }
+
+        private static void install(MenuTaskBar taskBar)
+        {
             try
             {
                 hideRaidReviewButton();
-                addButton(__instance);
+                addButton(taskBar);
             }
             catch (Exception ex)
             {
@@ -71,22 +122,26 @@ namespace RaidReviewOverlay.Patches
         /// "RaidReview" and hangs Application.OpenURL on it. If one is there
         /// anyway, hide it rather than leave the player with two buttons that
         /// claim the same thing and behave differently. Deactivating is
-        /// reversible - the bar rebuilds it from Raid Review's own patch as
-        /// soon as this addon stops suppressing it.
+        /// reversible: Raid Review's own patch builds its button again the next
+        /// time the bar is built - the next login - if this addon no longer
+        /// suppresses its setting by then.
         /// </summary>
         private static void hideRaidReviewButton()
         {
-            if (Plugin.Instance == null || !Plugin.Instance.ShowTaskBarButton)
+            if (Plugin.Instance == null || !Plugin.Instance.ShowTaskBarButton || !Plugin.Instance.IsActive)
                 return;
 
-            foreach (UnityEngine.UI.ToggleGroup group in UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.ToggleGroup>())
+            // includeInactive: while the bar is hidden its groups are inactive
+            // in the hierarchy, and Raid Review's button would otherwise be
+            // missed and show up next to this one when the bar comes back.
+            foreach (UnityEngine.UI.ToggleGroup group in UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.ToggleGroup>(true))
             {
                 if (group == null || group.name != RaidReviewGroupName || !group.gameObject.activeSelf)
                     continue;
                 group.gameObject.SetActive(false);
                 if (Plugin.Log != null)
                     Plugin.Log.LogInfo("hid Raid Review's own menu button; this addon's button opens the"
-                        + " overlay instead. Turn off 'Menu bar button' here to get theirs back.");
+                        + " overlay instead. Turn off 'Menu Bar Button' here to get theirs back after the next login.");
             }
         }
 
@@ -280,7 +335,7 @@ namespace RaidReviewOverlay.Patches
 
         private static void addButton(MenuTaskBar taskBar)
         {
-            if (Plugin.Instance == null || !Plugin.Instance.ShowTaskBarButton)
+            if (Plugin.Instance == null || !Plugin.Instance.ShowTaskBarButton || !Plugin.Instance.IsActive)
                 return;
 
             var toggles = AccessTools.Field(typeof(MenuTaskBar), "_toggleButtons").GetValue(taskBar)
@@ -373,6 +428,11 @@ namespace RaidReviewOverlay.Patches
             Plugin.Instance.RunDelayed(1.5f, () =>
             {
                 if (toggle == null || label == null)
+                    return;
+                // A bar hidden in the meantime makes every caption look
+                // vanished (activeInHierarchy is false all the way up). That is
+                // no reason to freeze the animator for good.
+                if (!clone.activeInHierarchy)
                     return;
                 if (isInvisible(label))
                 {

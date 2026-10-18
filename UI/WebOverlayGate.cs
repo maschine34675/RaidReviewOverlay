@@ -210,13 +210,20 @@ namespace RaidReviewOverlay.UI
                 return true;
             }
 
-            // The address can move between presses - Raid Review's server IP,
-            // port and TLS setting are all live config. Renavigate only then,
-            // to avoid reloading the replay on every toggle.
+            // The address can move between presses - the player's own address
+            // setting and Raid Review's server IP, port and TLS are all live
+            // config. Renavigate only then, to avoid reloading the replay on
+            // every toggle.
             if (!string.Equals(currentUrl, url, StringComparison.Ordinal))
             {
                 currentUrl = url;
                 handle.Navigate(url);
+                // Show, not Toggle: a press that brings a new address means
+                // "open this", typically right after fixing the address in F12
+                // - toggling would close a window that is still showing the
+                // old, broken page, and the fix would look like it did nothing.
+                handle.Show();
+                return true;
             }
 
             handle.Toggle();
